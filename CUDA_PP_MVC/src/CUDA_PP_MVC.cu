@@ -1,6 +1,7 @@
 #include<cstdio>
 
 int main(){
-	printf("Hello Word!!!\n");
+	for(int i = 0; i < 10; i++)
+		printf("Hello Word!!!\n");
 	return 0;
 }
