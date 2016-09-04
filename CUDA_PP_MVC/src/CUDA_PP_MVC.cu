@@ -6,5 +6,6 @@ int main(){
 		printf("Hello Word!!!\n");
 
 	cout << "Test git" << endl;
+	cout << "Segunda prueba" << endl;
 	return 0;
 }
