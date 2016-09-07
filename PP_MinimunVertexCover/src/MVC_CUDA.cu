@@ -171,7 +171,7 @@ void ejecutarCUDA(Graph* grafo) {
 
 int main() {
 	Graph* g = new Graph();
-	if(g->levantarGrafo("randomGraph7_02.csv"))
+	if(g->levantarGrafo("data/randomGraph7_02.csv"))
 	{
 		g->refinarGrafo();
 		g->compactarGrafo();
