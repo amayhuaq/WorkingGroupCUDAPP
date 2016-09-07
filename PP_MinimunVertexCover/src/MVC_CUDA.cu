@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <iostream>
+#include <string>
 #include "Grafo.h"
 #include "MVC_Serial.h"
 
@@ -156,11 +157,8 @@ void ejecutarCUDA(Graph* grafo) {
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 
-	for(uint i = 0; i < nNodes; i++)
-	{
-		cout << "Node " << i << " - Mvc " << mvc[i] << " Adj " << adj[i] << endl;
-	}
-
+	elapsedTime = elapsedTime / 1000.0;
+	nNodesMCVCUDA = 0;
 	for(int i = 0; i < nNodes; i++)
 		nNodesMCVCUDA += mvc[i];
 	arrayMvcCUDA = new int[nNodesMCVCUDA];
@@ -170,15 +168,23 @@ void ejecutarCUDA(Graph* grafo) {
 }
 
 int main() {
-	Graph* g = new Graph();
-	if(g->levantarGrafo("data/randomGraph7_02.csv"))
-	{
+	string path = "data/";
+	string arrayFiles[] = {"randomGraph4.csv", "randomGraph10.csv", "randomGraph7_01.csv", "randomGraph7_02.csv", "randomGraph10.csv", "randomGraph10000.csv"};
+	for(int i = 0; i < 6; i++){
+		Graph* g = new Graph();
+		g->levantarGrafo((path + arrayFiles[i]).c_str());
 		g->refinarGrafo();
 		g->compactarGrafo();
-
 		ejecutarCUDA(g);
-		printf("ElapsedtimeCUDA  : %f\n", elapsedTime / 1000.0);
 
+		MVCSerial mvcSerial(*g);
+		mvcSerial.ejecutarSerial();
+		int *arrayMVCSerial = mvcSerial.getListNodesMVC();
+		int nNodesMVCSerial = mvcSerial.getnNodesMVC();
+		for(int i = 0; i < nNodesMVCSerial; i++)
+			printf("%d%c", arrayMVCSerial[i], i + 1 == nNodesMVCSerial ? '\n' : ' ');
+
+		printf("Graph  nVertices: %d time for CUDA: %f s. Serial: %f s.\n", g->numVert, elapsedTime, mvcSerial.getTimeExe());
 	}
 	return 0;
 }

@@ -24,7 +24,7 @@ void MVCSerial::kerner1MVCSerial(){
 	for(int tid = 0; tid < nNodes; tid++){
 		mDegSerial = g.vert[tid].grado;
 		for(int i = 0;i < g.vert[tid].grado; i++){
-			deg2Serial = g.vert[tid].grado;
+			deg2Serial = g.vert[g.vert[tid].veci[i]].grado;
 			mDegSerial = mDegSerial < deg2Serial ? mDegSerial : deg2Serial;
 		}
 		if(mDegSerial == g.vert[tid].grado)
@@ -39,8 +39,10 @@ void MVCSerial::kernel2MVCSerial(){
 			if(!mvc[g.vert[tid].veci[i]])
 				adj[tid] = false;
 		}
-		if(mvc[tid] == adj[tid])
+		if(mvc[tid] != !adj[tid]){
 			terminedSerial = false;
+		}
+
 		prevMvc[tid] = mvc[tid];
 	}
 }
@@ -56,9 +58,10 @@ void MVCSerial::kernel3MVCSerial(){
 }
 
 void MVCSerial::kernel4MVCSerial(){
-	for(int tid = 0; tid < nNodes; tid){
+	for(int tid = 0; tid < nNodes; tid++){
 		if(!prevMvc[tid] && !adj[tid]){
 			for(int i = 0, eid; i < g.vert[tid].grado; i++){
+				eid = g.vert[tid].veci[i];
 				if(!prevMvc[eid] && !adj[eid] && eid < tid)
 					mvc[tid] = true;
 			}
@@ -94,7 +97,6 @@ void MVCSerial::ejecutarSerial(){
 	for(int i = 0; i < nNodes; i++)
 		nNodesMVC += mvc[i];
 }
-
 
 float MVCSerial::getTimeExe(){
 	return timeExe;
