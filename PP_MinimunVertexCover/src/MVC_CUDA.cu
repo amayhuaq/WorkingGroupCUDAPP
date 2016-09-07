@@ -9,6 +9,7 @@ using namespace std;
 #define MAX_THREADS_BY_BLOCK 1024
 
 int nNodesMCVCUDA, *arrayMvcCUDA;
+bool *mvc;
 float elapsedTime;
 
 __global__ void knowData(long *x1, long *y1, long *z1, long *x2, long *y2, long *z2){
@@ -90,7 +91,7 @@ __global__ void kernel4_mvc(int *nNodes, listNode *nodes, int *listNeigh, bool *
 
 void ejecutarCUDA(Graph* grafo) {
 	// variables host
-	bool *adj, *mvc, terminated = false;
+	bool *adj, terminated = false;
 	int nNodes = grafo->numVert;
 	int nEdges = grafo->numEdges;
 
@@ -169,7 +170,8 @@ void ejecutarCUDA(Graph* grafo) {
 
 int main() {
 	string path = "data/";
-	string arrayFiles[] = {"randomGraph4.csv", "randomGraph10.csv", "randomGraph7_01.csv", "randomGraph7_02.csv", "randomGraph10.csv", "randomGraph10000.csv"};
+	string resPath = "res/";
+	string arrayFiles[] = {"randomGraph4.csv", "randomGraph7_01.csv", "randomGraph7_02.csv", "randomGraph10.csv", "randomGraph10000.csv"};
 	for(int i = 0; i < 6; i++){
 		Graph* g = new Graph();
 		g->levantarGrafo((path + arrayFiles[i]).c_str());
@@ -179,12 +181,13 @@ int main() {
 
 		MVCSerial mvcSerial(*g);
 		mvcSerial.ejecutarSerial();
-		int *arrayMVCSerial = mvcSerial.getListNodesMVC();
+		bool *arrayMVCSerial = mvcSerial.getListNodesMVC();
 		int nNodesMVCSerial = mvcSerial.getnNodesMVC();
-		for(int i = 0; i < nNodesMVCSerial; i++)
-			printf("%d%c", arrayMVCSerial[i], i + 1 == nNodesMVCSerial ? '\n' : ' ');
 
 		printf("Graph  nVertices: %d time for CUDA: %f s. Serial: %f s.\n", g->numVert, elapsedTime, mvcSerial.getTimeExe());
+
+		g->genFileForVisualization((resPath + arrayFiles[i] + ".graphml").c_str(), mvc);
 	}
+
 	return 0;
 }

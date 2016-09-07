@@ -2,11 +2,13 @@
 #define GRAFO_CPP
 
 #include <sstream>
+#include <iostream>
 #include <fstream>
 #include <cstdio>
 #include <cstdlib>
-#include <string.h>
+#include <string>
 #include "Grafo.h"
+#include "Utilities.h"
 
 using namespace std;
 
@@ -61,6 +63,14 @@ void Graph::addEdges(int orig, int dest){
     numEdges++;
 }
 
+void Graph::addEdgesUnd(int orig, int dest){
+    node *nodeDest = newNode(dest);
+    vert[orig].origen = orig;
+    nodeDest->next = vert[orig].rootUnDi;
+    vert[orig].rootUnDi = nodeDest;
+    vert[orig].gradoUnDi++;
+}
+
 void Graph::refinarGrafo(){
     for(int i = 0; i < numVert; i++){
         vert[i].veci = new int[vert[i].grado];
@@ -105,8 +115,59 @@ bool Graph::levantarGrafo(const char* nameFile) {
         int dest = atoi(line.substr(pos + 1, line.size()).c_str()) - 1;
         addEdges(orig, dest);
         addEdges(dest, orig);
+
+        addEdgesUnd(orig, dest);
     }
     return true;
+}
+
+void Graph::genFileForVisualization(const char* nameFile, bool *mvc){
+
+	string cabe1 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+	string graphmlIni = "<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">\n";
+	string colorNode = "<key id=\"d0\" for=\"node\" attr.name=\"color\" attr.type=\"string\"> <default>yellow</default> </key>\n";
+	string graphIni = "<graph id=\"G\" edgedefault=\"undirected\">\n";
+	string graphFin = "</graph>\n";
+	string graphmlFin = "</graphml>\n";
+	string keyColor = "<data key=\"d0\">green</data>\n";
+	string nodeSimple[] = {"<node id=\"n", "\"/>\n"};
+	string nodeColored[] = {"<node id=\"n", "\">\n", "</node>\n"};
+	string edge[] = {"<edge id=\"e", "\" source=\"n", "\" target=\"n", "\"/>\n"};
+
+	ofstream file;
+	file.open(nameFile);
+	file << cabe1;
+	file << graphmlIni;
+	file << colorNode;
+	file << graphIni;
+	for(int tid = 0; tid < numVert; tid++){
+		string strTid = conIntToStr(tid);
+		if(mvc[tid]){
+			file << nodeColored[0] + strTid + nodeColored[1];
+			file << keyColor;
+			file << nodeColored[2];
+		}else{
+			file << nodeSimple[0] + strTid + nodeSimple[1];
+		}
+	}
+
+	for(int tid = 0, eid = 0; tid < numVert; tid++){
+		if(vert[tid].gradoUnDi){
+			string strVSrc = conIntToStr(tid);
+			node* temp = vert[tid].rootUnDi;
+			for(int j = 0; j < vert[tid].gradoUnDi; j++){
+				string strEid = conIntToStr(eid++);
+				string strVDes = conIntToStr(temp->valor);
+				file << edge[0] + strEid + edge[1] + strVSrc + edge[2] + strVDes + edge[3];
+				temp = temp->next;
+			}
+		}
+	}
+
+	file << graphFin;
+	file << graphmlFin;
+
+	file.close();
 }
 
 #endif /* GRAFO_CPP */

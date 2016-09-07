@@ -106,13 +106,8 @@ int MVCSerial::getnNodesMVC(){
 	return nNodesMVC;
 }
 
-int* MVCSerial::getListNodesMVC(){
-	arrayNodMVC = new int[nNodesMVC];
-	for(int i = 0, j = 0; i < nNodes; i++){
-		if(mvc[i])
-			arrayNodMVC[j++] = i;
-	}
-	return arrayNodMVC;
+bool* MVCSerial::getListNodesMVC(){
+	return mvc;
 }
 
 #endif

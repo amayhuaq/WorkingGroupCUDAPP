@@ -25,7 +25,7 @@ class MVCSerial{
 		void kernel4MVCSerial();
 		float getTimeExe();
 		int getnNodesMVC();
-		int* getListNodesMVC();
+		bool* getListNodesMVC();
 };
 
 #endif /* MVC_SERIAL_H_ */
