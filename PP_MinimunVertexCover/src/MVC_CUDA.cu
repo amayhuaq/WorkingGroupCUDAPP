@@ -179,13 +179,6 @@ int main() {
 		ejecutarCUDA(g);
 		printf("Elapsed time CUDA : %f\n", elapsedTime/1000.0);
 
-
-
-		/*
-		MVCSerial verSerial(*g);
-		verSerial.ejecutarSerial();
-		cout << "Serial: " << verSerial.getnNodesMVC() << endl;
-		*/
 	}
 	return 0;
 }
