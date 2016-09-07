@@ -177,7 +177,7 @@ int main() {
 		g->compactarGrafo();
 
 		ejecutarCUDA(g);
-		printf("ElapsedtimeCUDA : %f\n", elapsedTime);
+		printf("ElapsedtimeCUDA  : %f\n", elapsedTime / 1000.0);
 
 	}
 	return 0;
