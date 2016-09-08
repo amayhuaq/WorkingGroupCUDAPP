@@ -1,6 +1,11 @@
 #ifndef GRAFO_H_
 #define GRAFO_H_
 
+struct nodeSimple {
+	int grado;
+	int posIniNei;
+};
+
 struct node{
   int valor;
   node* next;
@@ -20,9 +25,10 @@ struct listNode{
 
 class Graph{
 	public:
-
 		listNode* vert;
+		nodeSimple *listNodeSimple;
 		int *listNeight, numVert, numEdges;
+
 		Graph();
 		node* newNode(int dest);
 		void printGrafo();

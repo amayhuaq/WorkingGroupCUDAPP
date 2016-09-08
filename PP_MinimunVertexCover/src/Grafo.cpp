@@ -84,11 +84,15 @@ void Graph::refinarGrafo(){
 
 void Graph::compactarGrafo() {
     listNeight = new int[numEdges];
+    listNodeSimple = new nodeSimple[numVert];
+
     for(int i = 0, pos = 0; i < numVert; i++){
         vert[i].posIniNei = pos;
         for(int j = 0; j < vert[i].grado; j++){
             listNeight[pos++] = vert[i].veci[j];
         }
+        listNodeSimple[i].grado = vert[i].grado;
+        listNodeSimple[i].posIniNei = vert[i].posIniNei;
     }
 }
 
