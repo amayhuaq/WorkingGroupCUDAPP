@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <iostream>
+#include <cuda.h>
 #include <string>
+#include <vector>
 #include "Grafo.h"
 #include "MVC_Serial.h"
 
@@ -8,28 +10,15 @@ using namespace std;
 
 #define MAX_THREADS_BY_BLOCK 1024
 
-int nNodesMCVCUDA, *arrayMvcCUDA;
 bool *mvc;
-float elapsedTime;
-
-__global__ void knowData(long *x1, long *y1, long *z1, long *x2, long *y2, long *z2){
-	*x1 = (long)blockDim.x;
-	*y1 = (long)blockDim.y;
-	*z1 = (long)blockDim.z;
-
-	*x2 = (long)gridDim.x;
-	*y2 = (long)gridDim.y;
-	*z2 = (long)gridDim.z;
-
-}
 
 __device__ int getIdVertex() {
 	return threadIdx.x + blockIdx.x * blockDim.x;
 }
 
-__global__ void kernel1_mvc(int* nNodes, listNode *nodes, int *listNeigh, bool *mvc) {
+__global__ void kernel1_mvc(int nNodes, listNode *nodes, int *listNeigh, bool *mvc) {
 	int tid = getIdVertex();
-	if(tid < *nNodes){
+	if(tid < nNodes){
 		int deg = nodes[tid].grado;
 		int posVec = nodes[tid].posIniNei;
 		int tempDeg, mdeg = deg;
@@ -43,9 +32,9 @@ __global__ void kernel1_mvc(int* nNodes, listNode *nodes, int *listNeigh, bool *
 	}
 }
 
-__global__ void kernel2_mvc(int* nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc, bool *terminated) {
+__global__ void kernel2_mvc(int nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc, bool *terminated) {
 	int tid = getIdVertex();
-	if(tid < *nNodes){
+	if(tid < nNodes){
 		int nEdges = nodes[tid].grado;
 		int posVec = nodes[tid].posIniNei;
 
@@ -59,9 +48,9 @@ __global__ void kernel2_mvc(int* nNodes, listNode *nodes, int *listNeigh, bool *
 	}
 }
 
-__global__ void kernel3_mvc(int *nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc) {
+__global__ void kernel3_mvc(int nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc) {
 	int tid = getIdVertex(), eid;
-	if(tid < *nNodes){
+	if(tid < nNodes){
 		int nEdges = nodes[tid].grado;
 		int posVec = nodes[tid].posIniNei;
 
@@ -73,9 +62,9 @@ __global__ void kernel3_mvc(int *nNodes, listNode *nodes, int *listNeigh, bool *
 	}
 }
 
-__global__ void kernel4_mvc(int *nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc) {
+__global__ void kernel4_mvc(int nNodes, listNode *nodes, int *listNeigh, bool *mvc, bool *adj, bool *prevMvc) {
 	int tid = getIdVertex();
-	if(tid < *nNodes){
+	if(tid < nNodes){
 		if(!prevMvc[tid] && !adj[tid]){
 			int nEdges = nodes[tid].grado, eid;
 			int posVec = nodes[tid].posIniNei;
@@ -89,16 +78,99 @@ __global__ void kernel4_mvc(int *nNodes, listNode *nodes, int *listNeigh, bool *
 	}
 }
 
-void ejecutarCUDA(Graph* grafo) {
-	// variables host
+float ejecutarCUDAZeroCopy(Graph *grafo) {
+	// variables para host
+	bool *adj, *prevMvc, *terminated;
+	listNode *nodes;
+	int *listNeigh;
+	int nNodes = grafo->numVert;
+	int nEdges = grafo->numEdges;
+
+	// variables para device
+	listNode *devNodes;
+	bool *devMvc, *devPrevMvc, *devAdj, *devTerminated;
+	int *devListNeig;
+
+	float elapsedTime;
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, 0);
+
+	cudaHostAlloc((void**)&terminated, sizeof(bool), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&mvc, nNodes * sizeof(bool), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&adj, nNodes * sizeof(bool), cudaHostAllocMapped);
+	cudaHostAlloc((void**)&prevMvc, nNodes * sizeof(bool), cudaHostAllocWriteCombined | cudaHostAllocMapped);
+	cudaHostAlloc((void**)&nodes, nNodes * sizeof(listNode), cudaHostAllocWriteCombined | cudaHostAllocMapped);
+	cudaHostAlloc((void**)&listNeigh, nEdges * sizeof(int), cudaHostAllocWriteCombined | cudaHostAllocMapped);
+
+	cudaHostGetDevicePointer(&devTerminated, terminated, 0);
+	cudaHostGetDevicePointer(&devMvc, mvc, 0);
+	cudaHostGetDevicePointer(&devAdj, adj, 0);
+	cudaHostGetDevicePointer(&devPrevMvc, prevMvc, 0);
+	cudaHostGetDevicePointer(&devNodes, nodes, 0);
+	cudaHostGetDevicePointer(&devListNeig, listNeigh, 0);
+
+	// Se asignan los valores iniciales de cada variable
+	*terminated = false;
+	for(uint i = 0; i < nNodes; i++) {
+		nodes[i] = grafo->vert[i];
+		mvc[i] = true;
+		adj[i] = true;
+		prevMvc[i] = true;
+	}
+	for(uint i = 0; i < nEdges; i++) {
+		listNeigh[i] = grafo->listNeight[i];
+	}
+
+	int blocks = (nNodes + MAX_THREADS_BY_BLOCK - 1) / MAX_THREADS_BY_BLOCK;
+	int threads = MAX_THREADS_BY_BLOCK;
+
+	kernel1_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc);
+	cudaThreadSynchronize();
+	kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+	cudaThreadSynchronize();
+	while(!(*terminated)) {
+		*terminated = true;
+		kernel3_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
+		cudaThreadSynchronize();
+		kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+		cudaThreadSynchronize();
+		kernel4_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
+		cudaThreadSynchronize();
+		kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+		cudaThreadSynchronize();
+	}
+
+//	cout << "CUDA Zero Memory\n";
+//	for(uint i = 0; i < nNodes; i++) {
+//		cout << "Node " << i << " - Mvc " << mvc[i] << " Adj " << adj[i] << endl;
+//	}
+
+	cudaFreeHost(mvc);
+	cudaFreeHost(adj);
+	cudaFreeHost(prevMvc);
+	cudaFreeHost(listNeigh);
+	cudaFreeHost(nodes);
+	cudaFreeHost(&terminated);
+
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+
+	return elapsedTime/1000.0;
+}
+
+float ejecutarCUDA(Graph* grafo) {
+	// variables para host
 	bool *adj, terminated = false;
 	int nNodes = grafo->numVert;
 	int nEdges = grafo->numEdges;
 
-	// variables devices
+	// variables para device
 	listNode *devNodes;
 	bool *devMvc, *devPrevMvc, *devAdj, *devTerminated;
-	int *devListNeig, *devNumNodes;
+	int *devListNeig;
 
 	mvc = new bool[nNodes];
 	adj = new bool[nNodes];
@@ -108,12 +180,12 @@ void ejecutarCUDA(Graph* grafo) {
 		adj[i] = true;
 	}
 
+	float elapsedTime;
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start, 0);
 
-	cudaMalloc((void**)&devNumNodes, sizeof(int));
 	cudaMalloc((void**)&devTerminated, sizeof(bool));
 	cudaMalloc((void**)&devMvc, nNodes * sizeof(bool));
 	cudaMalloc((void**)&devPrevMvc, nNodes * sizeof(bool));
@@ -121,7 +193,6 @@ void ejecutarCUDA(Graph* grafo) {
 	cudaMalloc((void**)&devNodes, nNodes * sizeof(listNode));
 	cudaMalloc((void**)&devListNeig, nEdges * sizeof(int));
 
-	cudaMemcpy(devNumNodes, &nNodes, sizeof(int), cudaMemcpyHostToDevice);
 	cudaMemcpy(devTerminated, &terminated, sizeof(bool), cudaMemcpyHostToDevice);
 	cudaMemcpy(devMvc, mvc, nNodes * sizeof(bool), cudaMemcpyHostToDevice);
 	cudaMemcpy(devPrevMvc, mvc, nNodes * sizeof(bool), cudaMemcpyHostToDevice);
@@ -132,18 +203,17 @@ void ejecutarCUDA(Graph* grafo) {
 	int blocks = (nNodes + MAX_THREADS_BY_BLOCK - 1) / MAX_THREADS_BY_BLOCK;
 	int threads = MAX_THREADS_BY_BLOCK;
 
-	kernel1_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc);
-	kernel2_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+	kernel1_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc);
+	kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
 	while(!terminated){
 		terminated = true;
 		cudaMemcpy(devTerminated, &terminated, sizeof(bool), cudaMemcpyHostToDevice);
-		kernel3_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
-		kernel2_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
-		kernel4_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
-		kernel2_mvc<<<blocks, threads>>>(devNumNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+		kernel3_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
+		kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
+		kernel4_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
+		kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
 		cudaMemcpy(&terminated, devTerminated, sizeof(bool), cudaMemcpyDeviceToHost);
 	}
-
 	cudaMemcpy(mvc, devMvc, nNodes * sizeof(bool), cudaMemcpyDeviceToHost);
 	cudaMemcpy(adj, devAdj, nNodes * sizeof(bool), cudaMemcpyDeviceToHost);
 
@@ -158,36 +228,56 @@ void ejecutarCUDA(Graph* grafo) {
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 
-	elapsedTime = elapsedTime / 1000.0;
-	nNodesMCVCUDA = 0;
-	for(int i = 0; i < nNodes; i++)
-		nNodesMCVCUDA += mvc[i];
-	arrayMvcCUDA = new int[nNodesMCVCUDA];
-	for(int i = 0, j = 0; i < nNodes; i++)
-		if(mvc[i])
-			arrayMvcCUDA[j++] = i;
+//	cout << "CUDA Global Memory\n";
+//	for(uint i = 0; i < nNodes; i++) {
+//		cout << "Node " << i << " - Mvc " << mvc[i] << " Adj " << adj[i] << endl;
+//	}
+
+	return elapsedTime / 1000.0;
 }
 
 int main() {
 	string path = "data/";
 	string resPath = "res/";
-	string arrayFiles[] = {"randomGraph4.csv", "randomGraph7_01.csv", "randomGraph7_02.csv", "randomGraph10.csv", "randomGraph10000.csv"};
-	for(int i = 0; i < 6; i++){
+	vector<string> arrayFiles;
+	arrayFiles.push_back("randomGraph4.csv");
+	arrayFiles.push_back("randomGraph7_01.csv");
+	arrayFiles.push_back("randomGraph7_02.csv");
+	arrayFiles.push_back("randomGraph10.csv");
+	arrayFiles.push_back("randomGraph10000.csv");
+
+	int whichDevice;
+	cudaDeviceProp prop;
+	cudaGetDevice(&whichDevice);
+	cudaGetDeviceProperties(&prop, whichDevice);
+	if(prop.canMapHostMemory != 1) {
+		cout << "Device no puede mapear memoria en CPU" << endl;
+		return 0;
+	}
+	cudaSetDeviceFlags(cudaDeviceMapHost);
+
+	float elapsedTime1, elapsedTime2;
+	for(int i = 0; i < arrayFiles.size(); i++) {
 		Graph* g = new Graph();
-		g->levantarGrafo((path + arrayFiles[i]).c_str());
+		g->levantarGrafo((path + arrayFiles[i]).c_str(), false, 1);
 		g->refinarGrafo();
 		g->compactarGrafo();
-		ejecutarCUDA(g);
 
+		// Ejecutando version CUDA con global memory
+		elapsedTime1 = ejecutarCUDA(g);
+		g->genFileForVisualization((resPath + arrayFiles[i] + ".graphml").c_str(), mvc);
+
+		// Ejecutando version CUDA con zero-memory
+		elapsedTime2 = ejecutarCUDAZeroCopy(g);
+
+		// Ejecutando version SERIAL
 		MVCSerial mvcSerial(*g);
 		mvcSerial.ejecutarSerial();
 		bool *arrayMVCSerial = mvcSerial.getListNodesMVC();
 		int nNodesMVCSerial = mvcSerial.getnNodesMVC();
 
-		printf("Graph  nVertices: %d time for CUDA: %f s. Serial: %f s.\n", g->numVert, elapsedTime, mvcSerial.getTimeExe());
-
-		g->genFileForVisualization((resPath + arrayFiles[i] + ".graphml").c_str(), mvc);
+		printf("Graph: %s - nVertex: %d\n", arrayFiles[i].c_str(), g->numVert);
+		printf("> Times: CUDA GloMem = %f secs, CUDA ZeroMem = %f secs, Serial = %f secs.\n", elapsedTime1, elapsedTime2, mvcSerial.getTimeExe());
 	}
-
 	return 0;
 }
