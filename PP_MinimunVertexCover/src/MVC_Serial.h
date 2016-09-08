@@ -17,6 +17,7 @@ class MVCSerial{
 		int nNodes, nNodesMVC, *arrayNodMVC;
 		float timeExe;
 	public:
+		int nEjec;
 		MVCSerial(Graph gVal);
 		void ejecutarSerial();
 		void kerner1MVCSerial();

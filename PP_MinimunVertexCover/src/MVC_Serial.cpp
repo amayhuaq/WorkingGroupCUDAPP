@@ -11,6 +11,7 @@ MVCSerial::MVCSerial(Graph gVal){
 	g = gVal;
 	nNodes = g.numVert;
 	nNodesMVC = 0;
+	nEjec = 0;
 	timeExe = 0.0;
 	mvc = NULL;
 	prevMvc = NULL;
@@ -85,6 +86,7 @@ void MVCSerial::ejecutarSerial(){
 	kerner1MVCSerial();
 	kernel2MVCSerial();
 	while(!terminedSerial){
+		nEjec++;
 		terminedSerial = true;
 		kernel3MVCSerial();
 		kernel2MVCSerial();

@@ -11,6 +11,15 @@ using namespace std;
 #define MAX_THREADS_BY_BLOCK 1024
 
 bool *mvc;
+int nEjecCUD, nEjecZero;
+
+struct structFile{
+	string nameFile;
+	bool isCSV;
+	int iniUno;
+	structFile(string a, bool b, int c){ nameFile = a; b = isCSV; iniUno = c;}
+};
+
 
 __device__ int getIdVertex() {
 	return threadIdx.x + blockIdx.x * blockDim.x;
@@ -86,6 +95,8 @@ float ejecutarCUDAZeroCopy(Graph *grafo) {
 	int nNodes = grafo->numVert;
 	int nEdges = grafo->numEdges;
 
+	nEjecZero = 0;
+
 	// variables para device
 	listNode *devNodes;
 	bool *devMvc, *devPrevMvc, *devAdj, *devTerminated;
@@ -131,6 +142,7 @@ float ejecutarCUDAZeroCopy(Graph *grafo) {
 	kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
 	cudaThreadSynchronize();
 	while(!(*terminated)) {
+		nEjecZero++;
 		*terminated = true;
 		kernel3_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
 		cudaThreadSynchronize();
@@ -141,11 +153,6 @@ float ejecutarCUDAZeroCopy(Graph *grafo) {
 		kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
 		cudaThreadSynchronize();
 	}
-
-//	cout << "CUDA Zero Memory\n";
-//	for(uint i = 0; i < nNodes; i++) {
-//		cout << "Node " << i << " - Mvc " << mvc[i] << " Adj " << adj[i] << endl;
-//	}
 
 	cudaFreeHost(mvc);
 	cudaFreeHost(adj);
@@ -166,6 +173,8 @@ float ejecutarCUDA(Graph* grafo) {
 	bool *adj, terminated = false;
 	int nNodes = grafo->numVert;
 	int nEdges = grafo->numEdges;
+
+	nEjecCUD = 0;
 
 	// variables para device
 	listNode *devNodes;
@@ -206,6 +215,7 @@ float ejecutarCUDA(Graph* grafo) {
 	kernel1_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc);
 	kernel2_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc, devTerminated);
 	while(!terminated){
+		nEjecCUD++;
 		terminated = true;
 		cudaMemcpy(devTerminated, &terminated, sizeof(bool), cudaMemcpyHostToDevice);
 		kernel3_mvc<<<blocks, threads>>>(nNodes, devNodes, devListNeig, devMvc, devAdj, devPrevMvc);
@@ -228,23 +238,24 @@ float ejecutarCUDA(Graph* grafo) {
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 
-//	cout << "CUDA Global Memory\n";
-//	for(uint i = 0; i < nNodes; i++) {
-//		cout << "Node " << i << " - Mvc " << mvc[i] << " Adj " << adj[i] << endl;
-//	}
-
 	return elapsedTime / 1000.0;
 }
 
 int main() {
 	string path = "data/";
 	string resPath = "res/";
-	vector<string> arrayFiles;
-	arrayFiles.push_back("randomGraph4.csv");
-	arrayFiles.push_back("randomGraph7_01.csv");
-	arrayFiles.push_back("randomGraph7_02.csv");
-	arrayFiles.push_back("randomGraph10.csv");
-	arrayFiles.push_back("randomGraph10000.csv");
+	vector<structFile> arrayFiles;
+	arrayFiles.push_back(structFile("randomGraph4.csv", 1, 1));
+	arrayFiles.push_back(structFile("randomGraph6_01.csv", 1, 1));
+	arrayFiles.push_back(structFile("randomGraph7_01.csv", 1, 1));
+	arrayFiles.push_back(structFile("randomGraph7_02.csv", 1, 1));
+	arrayFiles.push_back(structFile("randomGraph10.csv", 1, 1));
+	arrayFiles.push_back(structFile("randomGraph10000.csv", 1, 1));
+	arrayFiles.push_back(structFile("networkGraph_20000_600000.csv", 1, 1));
+//	arrayFiles.push_back(structFile("web-BerkStan_685230_7600595.txt", 0, 1));
+//	arrayFiles.push_back(structFile("soc-LiveJournal1.txt", 0, 0));
+	arrayFiles.push_back(structFile("p2p-Gnutella31.txt", 0, 0));
+
 
 	int whichDevice;
 	cudaDeviceProp prop;
@@ -259,13 +270,13 @@ int main() {
 	float elapsedTime1, elapsedTime2;
 	for(int i = 0; i < arrayFiles.size(); i++) {
 		Graph* g = new Graph();
-		g->levantarGrafo((path + arrayFiles[i]).c_str(), false, 1);
+		g->levantarGrafo((path + arrayFiles[i].nameFile).c_str(), arrayFiles[i].isCSV, arrayFiles[i].iniUno);
 		g->refinarGrafo();
 		g->compactarGrafo();
 
 		// Ejecutando version CUDA con global memory
 		elapsedTime1 = ejecutarCUDA(g);
-		g->genFileForVisualization((resPath + arrayFiles[i] + ".graphml").c_str(), mvc);
+		g->genFileForVisualization((resPath + arrayFiles[i].nameFile + ".graphml").c_str(), mvc);
 
 		// Ejecutando version CUDA con zero-memory
 		elapsedTime2 = ejecutarCUDAZeroCopy(g);
@@ -276,8 +287,9 @@ int main() {
 		bool *arrayMVCSerial = mvcSerial.getListNodesMVC();
 		int nNodesMVCSerial = mvcSerial.getnNodesMVC();
 
-		printf("Graph: %s - nVertex: %d\n", arrayFiles[i].c_str(), g->numVert);
-		printf("> Times: CUDA GloMem = %f secs, CUDA ZeroMem = %f secs, Serial = %f secs.\n", elapsedTime1, elapsedTime2, mvcSerial.getTimeExe());
+		printf("Graph: %s - nVertex: %d\n", arrayFiles[i].nameFile.c_str(), g->numVert);
+		printf("> Times: CUDA GloMem = %f secs, CUDA ZeroMem = %f secs, Serial = %f secs. \n", elapsedTime1, elapsedTime2, mvcSerial.getTimeExe());
+		printf("%d %d %d\n", nEjecCUD, nEjecZero, mvcSerial.nEjec);
 	}
 	return 0;
 }
