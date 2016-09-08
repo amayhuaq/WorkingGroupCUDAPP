@@ -92,7 +92,7 @@ void Graph::compactarGrafo() {
     }
 }
 
-bool Graph::levantarGrafo(const char* nameFile) {
+bool Graph::levantarGrafo(const char* nameFile, bool isCSV, int iniUno) {
     ifstream myFile(nameFile);
     if(!myFile.is_open()) {
     	printf("No se encontro el archivo indicado");
@@ -108,16 +108,29 @@ bool Graph::levantarGrafo(const char* nameFile) {
     numEdges = 0;
     for(int i = 0; i < numVert; i++)
         vert[i] = listNode();
-
+    int limit = 122, k = 0;
     for(;getline(myFile, line); ){
-        int pos = line.find(';');
-        int orig =  atoi(line.substr(0, 3).c_str()) - 1;
-        int dest = atoi(line.substr(pos + 1, line.size()).c_str()) - 1;
-        addEdges(orig, dest);
-        addEdges(dest, orig);
+    	int orig, dest;
+    	if(isCSV){
+			int pos = line.find(';');
+			orig =  atoi(line.substr(0, 3).c_str()) - iniUno;
+			dest = atoi(line.substr(pos + 1, line.size()).c_str()) - iniUno;
+    	}else{
+    		istringstream iss(line);
+    		iss >> orig;
+    		iss >> dest;
+    		orig -= iniUno;
+    		dest -= iniUno;
+    	}
+//    	printf("%d %d\n", orig, dest);
+        if(orig != dest){
+			addEdges(orig, dest);
+			addEdges(dest, orig);
 
-        addEdgesUnd(orig, dest);
+			addEdgesUnd(orig, dest);
+        }
     }
+    printf("termino de cargar \n", nameFile);
     return true;
 }
 

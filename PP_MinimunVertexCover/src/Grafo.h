@@ -31,7 +31,7 @@ class Graph{
 		void addEdgesUnd(int orig, int dest);
 		void refinarGrafo();
 		void compactarGrafo();
-		bool levantarGrafo(const char* nameFile);
+		bool levantarGrafo(const char* nameFile, bool isCSV, int iniUno);
 		void genFileForVisualization(const char* nameFile, bool *mvc);
 };
 
